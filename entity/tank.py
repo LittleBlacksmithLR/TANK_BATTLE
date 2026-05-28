@@ -118,17 +118,30 @@ class PlayerTank(Tank):
         self.spawn_col = col
         self.spawn_row = row
 
-    def update(self, *args, **kwargs):
+    def update(self, game_map=None, tank_group=None, *args, **kwargs):
         super().update()
         if self.invincible > 0:
             self.invincible -= 1
         if self.respawn_timer > 0:
             self.respawn_timer -= 1
             if self.respawn_timer == 0:
+                # 检查出生点是否被占
+                if game_map and tank_group and not self._can_respawn(game_map, tank_group):
+                    self.respawn_timer = 10  # 稍后再试
+                    return
                 self.col = self.spawn_col
                 self.row = self.spawn_row
                 self.alive = True
                 self.invincible = 90
+
+    def _can_respawn(self, game_map, tank_group):
+        if not game_map.is_tank_passable(self.spawn_col, self.spawn_row):
+            return False
+        test_rect = pygame.Rect(self.spawn_col * CELL + 2, self.spawn_row * CELL + 2, _TANK_W, _TANK_H)
+        for t in tank_group:
+            if t is not self and t.alive and t.rect.colliderect(test_rect):
+                return False
+        return True
 
     def die(self):
         self.alive = False
@@ -160,7 +173,7 @@ class EnemyTank(Tank):
         self.shoot_cd = 15
         self.dir_timer = 30
         # 移动节拍（0=每帧，1=每2帧...）
-        move_cd_map = {"basic": 3, "fast": 2, "armor": 5, "elite": 3}
+        move_cd_map = {"basic": 7, "fast": 5, "armor": 11, "elite": 7}
         self.move_interval = move_cd_map.get(etype, 1)
         self.move_counter = 0
 

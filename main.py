@@ -131,7 +131,7 @@ class PlayingState(State):
         self._update_bullets()
 
         # ── 玩家重生 ──
-        self.player.update()
+        self.player.update(self.game_map, self.all_tanks)
 
         # ── 胜利条件 ──
         if self.ai_killed >= self.game.level_cfg["ai_total"] and len(self.enemies) == 0:
@@ -217,6 +217,8 @@ class PlayingState(State):
                 else:
                     if tank.hit():
                         self.ai_killed += 1
+                        self.enemies.remove(tank)
+                        self.all_tanks.remove(tank)
                 break
 
     def draw(self, surface):
@@ -339,20 +341,25 @@ class Game:
             state.handle_events(events)
             state.update(self.clock.tick(FPS))
 
+            # 刷新 state：handle_events/update 可能通过 start_game 等切换了状态
+            state = self.state_machine.current
+            if not state:
+                break
+
             # 检查 PlayingState 是否结束
             if isinstance(state, PlayingState) and state.end_reason:
                 self.end_reason = state.end_reason
                 won = state.end_reason in ("win", "commander_lost_ai")
                 if won:
-                    # 胜利 → 下一关
                     if self.current_level < 2:
                         self.start_game(self.current_level + 1)
                     else:
-                        # 已通关
-                        self.state_machine.add("gameover", GameOverState(self))
+                        gos = GameOverState(self)
+                        self.state_machine.add("gameover", gos)
                         self.state_machine.change("gameover")
                 else:
-                    self.state_machine.add("gameover", GameOverState(self))
+                    gos = GameOverState(self)
+                    self.state_machine.add("gameover", gos)
                     self.state_machine.change("gameover")
                 continue
 
