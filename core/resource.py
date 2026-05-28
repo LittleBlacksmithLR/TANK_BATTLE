@@ -1,13 +1,19 @@
-"""资源加载（占位，后续替换为 SpriteSheet 贴图）"""
+"""资源加载"""
 
+import json
 import os
 import pygame
 
-_ASSET_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets")
+_ROOT = os.path.dirname(os.path.dirname(__file__))
+_ASSETS = os.path.join(_ROOT, "assets")
+
+
+def asset_path(*parts):
+    return os.path.join(_ASSETS, *parts)
 
 
 def load_image(path, size=None):
-    full = os.path.join(_ASSET_DIR, "images", path)
+    full = asset_path("images", path)
     try:
         img = pygame.image.load(full).convert_alpha()
         if size:
@@ -15,3 +21,11 @@ def load_image(path, size=None):
         return img
     except FileNotFoundError:
         return None
+
+
+def load_level_json(n):
+    path = asset_path("levels", f"level{n}.json")
+    if not os.path.isfile(path):
+        return None
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)

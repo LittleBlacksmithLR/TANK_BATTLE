@@ -3,24 +3,32 @@
 import pygame
 
 # ── 窗口尺寸 ──
-CELL = 24                    # 半格尺寸 (px)
-COLS = 26                    # 半格列数
-ROWS = 26                    # 半格行数
-PLAY_W = COLS * CELL         # 624  游戏区域宽度
-PLAY_H = ROWS * CELL         # 624  游戏区域高度
-HUD_W = 200                  # HUD 面板宽度
-SCREEN_W = PLAY_W + HUD_W    # 832
-SCREEN_H = 700               # 窗口高度
+CELL = 24
+COLS = 26
+ROWS = 26
+PLAY_W = COLS * CELL
+PLAY_H = ROWS * CELL
+HUD_W = 200
+SCREEN_W = PLAY_W + HUD_W
+SCREEN_H = PLAY_H
 
 FPS = 60
+FRAME_MS = 1000 // FPS
 
 # ── 图块类型 ──
 EMPTY = 0
-WALL = 1      # 砖墙（可摧毁）
-STEEL = 2     # 钢铁（不可摧毁）
-WATER = 3     # 水域
-BASE = 4      # 基地围墙
-COMMANDER = 5 # 主将
+WALL = 1
+STEEL = 2
+WATER = 3
+BASE = 4
+COMMANDER = 5
+ICE = 6
+FOREST = 7
+
+TILE_CHARS = {
+    ".": EMPTY, "#": WALL, "S": STEEL, "W": WATER,
+    "B": BASE, "C": COMMANDER, "I": ICE, "F": FOREST,
+}
 
 # ── 方向 ──
 DIR_UP = 0
@@ -29,28 +37,56 @@ DIR_LEFT = 2
 DIR_RIGHT = 3
 DIR_VEC = {DIR_UP: (0, -1), DIR_DOWN: (0, 1), DIR_LEFT: (-1, 0), DIR_RIGHT: (1, 0)}
 DIR_NAMES = {DIR_UP: "up", DIR_DOWN: "down", DIR_LEFT: "left", DIR_RIGHT: "right"}
+OPPOSITE_DIR = {DIR_UP: DIR_DOWN, DIR_DOWN: DIR_UP, DIR_LEFT: DIR_RIGHT, DIR_RIGHT: DIR_LEFT}
+
+# ── 道具 ──
+PU_STAR = "star"
+PU_HELMET = "helmet"
+PU_CLOCK = "clock"
+PU_BOMB = "bomb"
+PU_SHOVEL = "shovel"
+PU_TANK = "tank"
+PU_TYPES = [PU_STAR, PU_HELMET, PU_CLOCK, PU_BOMB, PU_SHOVEL, PU_TANK]
+
+DROP_RATES = {"basic": 0.10, "fast": 0.10, "armor": 0.30, "elite": 1.00}
+
+# 时长（毫秒）
+PU_LIFETIME_MS = 15000
+HELMET_MS = 10000
+FREEZE_MS = 10000
+SHOVEL_MS = 20000
+INVINCIBLE_SPAWN_MS = 1500
+
+MAX_PLAYER_BULLETS = 2
+MAX_ENEMY_BULLETS = 12
 
 # ── 调色板 ──
-C_BLACK    = (20, 20, 20)
-C_WHITE    = (240, 240, 240)
-C_GRAY     = (100, 100, 100)
-C_DARK     = (40, 40, 40)
+C_BLACK = (20, 20, 20)
+C_WHITE = (240, 240, 240)
+C_GRAY = (100, 100, 100)
+C_DARK = (40, 40, 40)
 
-C_GREEN    = (70, 170, 70)
-C_DGREEN   = (45, 110, 45)
-C_RED      = (210, 50, 50)
-C_DRED     = (160, 30, 30)
-C_YELLOW   = (240, 210, 60)
+C_GREEN = (70, 170, 70)
+C_DGREEN = (45, 110, 45)
+C_RED = (210, 50, 50)
+C_DRED = (160, 30, 30)
+C_BLUE = (60, 120, 220)
+C_DBLUE = (40, 80, 170)
+C_YELLOW = (240, 210, 60)
 
-C_WALL     = (170, 120, 60)
-C_DWALL    = (130, 90, 40)
-C_STEEL    = (170, 170, 180)
-C_DSTEEL   = (120, 120, 130)
-C_WATER    = (40, 110, 190)
-C_LWATER   = (70, 150, 220)
-C_BASE     = (160, 130, 90)
-C_DBASE    = (120, 95, 60)
-C_COMMAND  = (240, 190, 40)
+C_WALL = (170, 120, 60)
+C_DWALL = (130, 90, 40)
+C_STEEL = (170, 170, 180)
+C_DSTEEL = (120, 120, 130)
+C_WATER = (40, 110, 190)
+C_LWATER = (70, 150, 220)
+C_ICE = (180, 220, 255)
+C_DICE = (140, 190, 230)
+C_FOREST = (40, 130, 50)
+C_DFOREST = (25, 90, 35)
+C_BASE = (160, 130, 90)
+C_DBASE = (120, 95, 60)
+C_COMMAND = (240, 190, 40)
 C_DCOMMAND = (190, 140, 20)
-C_BULLET_P = (255, 255, 120)  # 玩家子弹
-C_BULLET_E = (255, 120, 120)  # 敌方子弹
+C_BULLET_P = (255, 255, 120)
+C_BULLET_E = (255, 120, 120)

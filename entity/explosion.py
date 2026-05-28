@@ -6,11 +6,14 @@ import pygame
 class Explosion:
     """爆炸动画：膨胀 → 消退"""
 
-    def __init__(self, cx, cy, big=False):
+    def __init__(self, cx, cy, big=False, small=False):
         self.x = cx
         self.y = cy
         self.frame = 0
-        self.max_frame = 24 if big else 18
+        if small:
+            self.max_frame = 10
+        else:
+            self.max_frame = 24 if big else 18
         self.done = False
 
     def update(self):
