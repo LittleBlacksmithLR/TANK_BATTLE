@@ -27,12 +27,11 @@ def _level1():
     g = _make_grid()
 
     # ── AI 基地（顶部） ──
-    _place_block(g, 10, 0, WALL)    # 左上
-    _place_block(g, 14, 0, WALL)    # 右上
-    _place_block(g, 10, 2, WALL)    # 左下
-    _place_block(g, 14, 2, WALL)    # 右下
-    # 中间留空 → 入口 + AI 主将
-    _place(g, 12, 0, COMMANDER)     # AI 主将
+    _place(g, 10, 0, WALL, 6, 1)   # 上墙
+    _place(g, 10, 0, WALL, 1, 5)   # 左墙
+    _place(g, 15, 0, WALL, 1, 5)   # 右墙
+    _place(g, 10, 4, WALL, 6, 1)   # 下墙
+    _place(g, 12, 2, COMMANDER)    # AI 主将
 
     # ── 砖墙群（上半场） ──
     _place_block(g, 2, 1, WALL)
@@ -74,12 +73,11 @@ def _level1():
     _place_block(g, 16, 19, STEEL)
 
     # ── 玩家基地（底部） ──
-    _place_block(g, 10, 21, WALL)
-    _place_block(g, 14, 21, WALL)
-    _place_block(g, 10, 23, WALL)
-    _place_block(g, 14, 23, WALL)
-    # 中间留空 → 入口 + 玩家主将
-    _place(g, 12, 23, COMMANDER)    # 玩家主将
+    _place(g, 10, 21, WALL, 6, 1)  # 上墙
+    _place(g, 10, 21, WALL, 1, 5)  # 左墙
+    _place(g, 15, 21, WALL, 1, 5)  # 右墙
+    _place(g, 12, 23, COMMANDER)   # 玩家主将
+    # 底部开口为入口（玩家从下方进入）
 
     cfg = {
         "level": 1,
@@ -87,7 +85,7 @@ def _level1():
         "ai_max_active": 4,
         "player_lives": 3,
         "player_spawn": (12, 25),
-        "ai_spawns": [(2, 0), (12, 0), (22, 0)],
+        "ai_spawns": [(0, 0), (8, 0), (16, 0), (24, 0)],
     }
     return g, cfg
 
@@ -99,11 +97,11 @@ def _level2():
     g = _make_grid()
 
     # ── AI 基地 ──
-    _place_block(g, 10, 0, WALL)
-    _place_block(g, 14, 0, WALL)
-    _place_block(g, 10, 2, WALL)
-    _place_block(g, 14, 2, WALL)
-    _place(g, 12, 0, COMMANDER)
+    _place(g, 10, 0, WALL, 6, 1)
+    _place(g, 10, 0, WALL, 1, 5)
+    _place(g, 15, 0, WALL, 1, 5)
+    _place(g, 10, 4, WALL, 6, 1)
+    _place(g, 12, 2, COMMANDER)
 
     # ── 大量砖墙 ──
     for bx in range(0, 26, 4):
@@ -123,10 +121,9 @@ def _level2():
     _place_block(g, 10, 18, STEEL)
 
     # ── 玩家基地 ──
-    _place_block(g, 10, 21, WALL)
-    _place_block(g, 14, 21, WALL)
-    _place_block(g, 10, 23, WALL)
-    _place_block(g, 14, 23, WALL)
+    _place(g, 10, 21, WALL, 6, 1)
+    _place(g, 10, 21, WALL, 1, 5)
+    _place(g, 15, 21, WALL, 1, 5)
     _place(g, 12, 23, COMMANDER)
 
     cfg = {
@@ -135,7 +132,7 @@ def _level2():
         "ai_max_active": 5,
         "player_lives": 3,
         "player_spawn": (12, 25),
-        "ai_spawns": [(1, 0), (12, 0), (23, 0)],
+        "ai_spawns": [(0, 0), (8, 0), (16, 0), (24, 0)],
     }
     return g, cfg
 

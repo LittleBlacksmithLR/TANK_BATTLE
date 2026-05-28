@@ -147,7 +147,6 @@ class PlayerTank(Tank):
 
 class EnemyTank(Tank):
     def __init__(self, col, row, etype="basic"):
-        # 必须在 super().__init__() 之前设置，因为 _update_image() 会被调用
         self.etype = etype
         hp_map = {"basic": 1, "fast": 1, "armor": 4, "elite": 1}
         speed_map = {"basic": 1, "fast": 2, "armor": 1, "elite": 1}
@@ -160,6 +159,10 @@ class EnemyTank(Tank):
         self.shoot_cd_max = cd_map.get(etype, 30)
         self.shoot_cd = 15
         self.dir_timer = 30
+        # 移动节拍（0=每帧，1=每2帧...）
+        move_cd_map = {"basic": 1, "fast": 0, "armor": 2, "elite": 1}
+        self.move_interval = move_cd_map.get(etype, 1)
+        self.move_counter = 0
 
     def _update_image(self):
         w, h = _TANK_W, _TANK_H
@@ -198,13 +201,17 @@ class EnemyTank(Tank):
 
         self.dir_timer -= 1
 
-        # 向前移动
-        dcol, drow = DIR_VEC[self.direction]
-        if self.can_move(dcol * self.speed, drow * self.speed, game_map, tank_group):
-            self.col += dcol * self.speed
-            self.row += drow * self.speed
+        # 节拍控制（降低移动频率）
+        if self.move_counter < self.move_interval:
+            self.move_counter += 1
         else:
-            self._pick_dir(game_map, tank_group)
+            self.move_counter = 0
+            dcol, drow = DIR_VEC[self.direction]
+            if self.can_move(dcol * self.speed, drow * self.speed, game_map, tank_group):
+                self.col += dcol * self.speed
+                self.row += drow * self.speed
+            else:
+                self._pick_dir(game_map, tank_group)
 
         # 定时变向
         if self.dir_timer <= 0:

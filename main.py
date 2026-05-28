@@ -189,6 +189,9 @@ class PlayingState(State):
             bullet_center = (b.x, b.y)
             for cmd in [self.ai_cmd, self.player_cmd]:
                 if cmd and cmd.alive and cmd.grid_rect.collidepoint(bullet_center):
+                    # 不能击毁己方主将
+                    if cmd.team == b.team:
+                        continue
                     cmd.alive = False
                     hit_cmd = True
                     if cmd.team == "player":
