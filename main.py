@@ -1,255 +1,364 @@
-"""坦克大战 — 双阵营对战"""
+"""坦克大战 v2.0 — 主入口 + 游戏循环"""
 
 import sys
+import random
 import pygame
 
 from const import (
-    SCREEN_WIDTH, SCREEN_HEIGHT, FPS, CELL_SIZE, COLS, ROWS,
-    EMPTY, WALL, STEEL, WATER, BUNKER, COMMANDER,
-    COLOR_BLACK, DIR_VEC,
+    CELL, COLS, ROWS, PLAY_W, PLAY_H, HUD_W, SCREEN_W, SCREEN_H, FPS,
+    EMPTY, WALL, STEEL, WATER, BASE, COMMANDER,
+    DIR_UP, DIR_DOWN, DIR_LEFT, DIR_RIGHT, DIR_VEC,
+    C_BLACK,
 )
-from map import GameMap, pos_to_grid
-from bullet import Bullet
-from tank import PlayerTank, AITank
+from core.state import State, StateMachine
+from map.tile import GameMap, pos_to_grid
+from map.levels import get_level
+from entity.tank import PlayerTank, EnemyTank
+from entity.bullet import Bullet
+from entity.base import Commander
+from ui.hud import HUD
+from ui.screens import TitleScreen, GameOverScreen
 
 
-# ── 配置 ──
-AI_TOTAL = 10           # AI 坦克总数
-AI_MAX_ACTIVE = 3       # 同时活跃 AI 数
-AI_SPAWN_POINTS = [     # AI 出生点（顶部）
-    (1, 0), (9, 0), (18, 0), (27, 0), (36, 0),
-]
-MOVE_DELAY = 8          # 长按移动间隔（帧）
+# ──────────────────────────────────────────
+#  PlayingState — 游戏进行中
+# ──────────────────────────────────────────
+class PlayingState(State):
+    def enter(self):
+        g = self.game
+        level_cfg = g.level_cfg
 
+        self.game_map = GameMap(g.level_data)
 
-def draw_hud(surface, player, ai_killed, ai_tanks, game_state, font):
-    """绘制 HUD"""
-    if game_state == "playing":
-        info = [
-            f"[B 方] 坐标: ({player.col}, {player.row}) 方向: {player.direction}",
-            f"[A 方] 已消灭: {ai_killed}/{AI_TOTAL} 存活: {len(ai_tanks)}",
-            "WASD 移动 | J/空格 射击",
-        ]
-        for i, text in enumerate(info):
-            surf = font.render(text, True, (200, 200, 200))
-            surface.blit(surf, (10, 10 + i * 22))
-        player.draw_hud_extra(surface, font)
+        # 玩家
+        spawn = level_cfg["player_spawn"]
+        self.player = PlayerTank(spawn[0], spawn[1])
 
-    elif game_state == "player_win":
-        surf = font.render("🎉 胜利！你摧毁了所有敌人！按 R 重新开始", True, (100, 255, 100))
-        surface.blit(surf, (SCREEN_WIDTH // 2 - 260, SCREEN_HEIGHT // 2 - 10))
-    elif game_state == "player_lose":
-        surf = font.render("💀 失败！按 R 重新开始", True, (255, 80, 80))
-        surface.blit(surf, (SCREEN_WIDTH // 2 - 150, SCREEN_HEIGHT // 2 - 10))
-    elif game_state == "commander_lost_ai":
-        surf = font.render("🎉 胜利！你摧毁了敌方主将！按 R 重新开始", True, (100, 255, 100))
-        surface.blit(surf, (SCREEN_WIDTH // 2 - 290, SCREEN_HEIGHT // 2 - 10))
-    elif game_state == "commander_lost_player":
-        surf = font.render("💀 失败！我方主将被摧毁！按 R 重新开始", True, (255, 80, 80))
-        surface.blit(surf, (SCREEN_WIDTH // 2 - 270, SCREEN_HEIGHT // 2 - 10))
+        # 主将（从地图中找到两个 COMMANDER，一个在顶部属于 AI，一个在底部属于玩家）
+        cmd_positions = self._find_commanders(g.level_data)
+        # 按 row 排序：row 小的为 AI 主将，row 大的为玩家主将
+        cmd_positions.sort(key=lambda p: p[1])
+        self.ai_cmd = None
+        self.player_cmd = None
+        if len(cmd_positions) >= 2:
+            self.ai_cmd = Commander(cmd_positions[0][0], cmd_positions[0][1], "ai")
+            self.player_cmd = Commander(cmd_positions[1][0], cmd_positions[1][1], "player")
+        elif len(cmd_positions) == 1:
+            self.player_cmd = Commander(cmd_positions[0][0], cmd_positions[0][1], "player")
 
+        # 子弹 & 坦克组
+        self.bullets = pygame.sprite.Group()
+        self.enemies = pygame.sprite.Group()
+        self.all_tanks = pygame.sprite.Group()
+        self.all_tanks.add(self.player)
 
-def draw_grid(surface):
-    for x in range(0, SCREEN_WIDTH, CELL_SIZE):
-        pygame.draw.line(surface, (40, 40, 40), (x, 0), (x, SCREEN_HEIGHT))
-    for y in range(0, SCREEN_HEIGHT, CELL_SIZE):
-        pygame.draw.line(surface, (40, 40, 40), (0, y), (SCREEN_WIDTH, y))
+        # AI 管理
+        self.ai_pool = level_cfg["ai_total"]
+        self.ai_killed = 0
+        self.ai_max_active = level_cfg["ai_max_active"]
+        self.ai_spawn_points = level_cfg["ai_spawns"]
+        self.spawn_timer = 60  # 初始延迟
 
+        # AI 坦克类型队列
+        self.ai_types = []
+        for _ in range(self.ai_pool):
+            r = random.random()
+            if r < 0.4:
+                self.ai_types.append("basic")
+            elif r < 0.65:
+                self.ai_types.append("fast")
+            elif r < 0.85:
+                self.ai_types.append("armor")
+            else:
+                self.ai_types.append("elite")
+        random.shuffle(self.ai_types)
 
-def main():
-    pygame.init()
-    screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-    pygame.display.set_caption("坦克大战 — 阵营对战")
-    clock = pygame.time.Clock()
-    try:
-        font = pygame.font.SysFont("simhei", 18)
-    except Exception:
-        font = pygame.font.Font(None, 18)
+        self.end_reason = None  # "win", "lose", "commander_lost"
 
-    # ══════════════════════════════════════════
-    # 游戏状态
-    # ══════════════════════════════════════════
-    def reset_game():
-        gm = GameMap()
-        player = PlayerTank(19, 28)
-        ai_list = []
-        bullets = []
-        ai_pool = AI_TOTAL
-        ai_killed = 0
-        ai_spawn_timer = 30  # 初始延迟
-        state = "playing"
-        return gm, player, ai_list, bullets, ai_pool, ai_killed, ai_spawn_timer, state
+    def _find_commanders(self, data):
+        positions = []
+        for r in range(ROWS):
+            for c in range(COLS):
+                if data[r][c] == COMMANDER:
+                    positions.append((c, r))
+        return positions
 
-    (game_map, player, ai_tanks, bullets,
-     ai_pool, ai_killed, ai_spawn_timer, game_state) = reset_game()
+    def handle_events(self, events):
+        for e in events:
+            if e.type == pygame.KEYDOWN:
+                # 射击
+                if e.key in (pygame.K_j, pygame.K_SPACE):
+                    if self.player.alive and self.player.shoot_cd == 0:
+                        self.bullets.add(self.player.shoot())
+                        self.player.shoot_cd = self.player.shoot_cd_max
+                # 暂停
+                if e.key == pygame.K_ESCAPE:
+                    self.game.state_machine.change("title")
 
-    # 按键映射
-    KEY_MAP = {
-        pygame.K_w: (0, -1, "up"), pygame.K_UP: (0, -1, "up"),
-        pygame.K_s: (0, 1, "down"), pygame.K_DOWN: (0, 1, "down"),
-        pygame.K_a: (-1, 0, "left"), pygame.K_LEFT: (-1, 0, "left"),
-        pygame.K_d: (1, 0, "right"), pygame.K_RIGHT: (1, 0, "right"),
-    }
-    held_dirs = {}
+    def update(self, dt):
+        if self.end_reason:
+            return
 
-    running = True
-    while running:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                running = False
+        # ── 玩家移动（长按） ──
+        if self.player.alive and self.player.respawn_timer == 0:
+            keys = pygame.key.get_pressed()
+            dx, dy = 0, 0
+            dir_map = {
+                pygame.K_w: (0, -1, DIR_UP), pygame.K_UP: (0, -1, DIR_UP),
+                pygame.K_s: (0, 1, DIR_DOWN), pygame.K_DOWN: (0, 1, DIR_DOWN),
+                pygame.K_a: (-1, 0, DIR_LEFT), pygame.K_LEFT: (-1, 0, DIR_LEFT),
+                pygame.K_d: (1, 0, DIR_RIGHT), pygame.K_RIGHT: (1, 0, DIR_RIGHT),
+            }
+            for k, (dc, dr, d) in dir_map.items():
+                if keys[k]:
+                    dx, dy = dc, dr
+                    self.player.set_direction(d)
+                    break
+            if dx != 0 or dy != 0:
+                if self.player.can_move(dx, dy, self.game_map, self.all_tanks):
+                    self.player.col += dx
+                    self.player.row += dy
 
-            elif event.type == pygame.KEYDOWN:
-                if event.key in KEY_MAP:
-                    dcol, drow, dir_name = KEY_MAP[event.key]
-                    held_dirs[event.key] = (dcol, drow, dir_name)
-                    if game_state == "playing" and player.alive and player.respawn_timer == 0:
-                        if player.can_move_to(dcol, drow, game_map,
-                                              [player] + ai_tanks):
-                            player.direction = dir_name
-                            player.col += dcol
-                            player.row += drow
-                            player.move_timer = MOVE_DELAY
-                elif event.key == pygame.K_r and game_state != "playing":
-                    (game_map, player, ai_tanks, bullets,
-                     ai_pool, ai_killed, ai_spawn_timer, game_state) = reset_game()
-                elif event.key in (pygame.K_j, pygame.K_SPACE):
-                    if (game_state == "playing" and player.alive
-                            and player.shoot_cd == 0 and player.respawn_timer == 0):
-                        bullets.append(player.shoot())
-                        player.shoot_cd = player.shoot_cd_max
+        # ── AI 生成 ──
+        self._update_spawning()
 
-            elif event.type == pygame.KEYUP:
-                held_dirs.pop(event.key, None)
+        # ── AI 行为 ──
+        for e in self.enemies:
+            if e.alive:
+                e.update(self.game_map, self.all_tanks, self.bullets)
 
-        # ══════════════════════════════════════
-        # 更新逻辑
-        # ══════════════════════════════════════
-        if game_state == "playing":
-            all_tanks = [player] + ai_tanks
+        # ── 子弹更新 + 碰撞 ──
+        self._update_bullets()
 
-            # ── 玩家移动（长按自动重复） ──
-            if player.alive and player.respawn_timer == 0:
-                player.update()
-                if held_dirs:
-                    last_key = list(held_dirs.keys())[-1]
-                    dcol, drow, dir_name = held_dirs[last_key]
-                    player.direction = dir_name
-                    if player.move_timer > 0:
-                        player.move_timer -= 1
+        # ── 玩家重生 ──
+        self.player.update()
+
+        # ── 胜利条件 ──
+        if self.ai_killed >= self.game.level_cfg["ai_total"] and len(self.enemies) == 0:
+            self.end_reason = "win"
+
+    def _update_spawning(self):
+        if self.spawn_timer > 0:
+            self.spawn_timer -= 1
+            return
+        if len(self.enemies) >= self.ai_max_active or self.ai_pool <= 0:
+            return
+        if not self.ai_types:
+            return
+
+        # 找个空的出生点
+        random.shuffle(self.ai_spawn_points)
+        for col, row in self.ai_spawn_points:
+            if not self.game_map.is_tank_passable(col, row):
+                continue
+            test_rect = pygame.Rect(col * CELL + 2, row * CELL + 2, CELL - 4, CELL - 4)
+            blocked = any(
+                t.alive and t.rect.colliderect(test_rect)
+                for t in self.all_tanks
+            )
+            if not blocked:
+                etype = self.ai_types.pop(0)
+                enemy = EnemyTank(col, row, etype)
+                self.enemies.add(enemy)
+                self.all_tanks.add(enemy)
+                self.ai_pool -= 1
+                self.spawn_timer = 90
+                return
+        self.spawn_timer = 15
+
+    def _update_bullets(self):
+        for b in list(self.bullets):
+            if not b.alive:
+                self.bullets.remove(b)
+                continue
+
+            # 保存移动前的位置，用于判断是否经过 COMMANDER
+            old_col, old_row = b.x // CELL, b.y // CELL
+            old_tile = self.game_map.get(old_col, old_row)
+
+            b.update(self.game_map)
+
+            if not b.alive:
+                self.bullets.remove(b)
+                continue
+
+            col, row = b.x // CELL, b.y // CELL
+
+            # 命中主将？（检查当前位置 + 上一帧位置）
+            hit_cmd = False
+            bullet_center = (b.x, b.y)
+            for cmd in [self.ai_cmd, self.player_cmd]:
+                if cmd and cmd.alive and cmd.grid_rect.collidepoint(bullet_center):
+                    cmd.alive = False
+                    hit_cmd = True
+                    if cmd.team == "player":
+                        self.end_reason = "commander_lost_player"
                     else:
-                        if player.can_move_to(dcol, drow, game_map, all_tanks):
-                            player.col += dcol
-                            player.row += drow
-                        player.move_timer = MOVE_DELAY
-            else:
-                player.update()  # 处理重生倒计时
+                        self.end_reason = "commander_lost_ai"
+                    break
 
-            # ── AI 生成 ──
-            if ai_spawn_timer > 0:
-                ai_spawn_timer -= 1
-            else:
-                if len(ai_tanks) < AI_MAX_ACTIVE and ai_pool > 0:
-                    spawn = AITank.find_spawn_point(
-                        game_map, all_tanks, AI_SPAWN_POINTS)
-                    if spawn:
-                        col, row = spawn
-                        ai_tanks.append(AITank(col, row))
-                        ai_pool -= 1
-                    ai_spawn_timer = 40
+            if hit_cmd:
+                self.bullets.remove(b)
+                continue
 
-            # ── AI 更新 ──
-            for ai in ai_tanks[:]:
-                if ai.alive:
-                    ai.update(game_map, all_tanks, bullets)
+            # 命中坦克？
+            hits = pygame.sprite.spritecollide(b, self.all_tanks, False)
+            for tank in hits:
+                if tank is b or tank.team == b.team:
+                    continue
+                self.bullets.remove(b)
+                if isinstance(tank, PlayerTank):
+                    lives = tank.die()
+                    if lives <= 0:
+                        self.end_reason = "lose"
                 else:
-                    ai_tanks.remove(ai)
-                    ai_killed += 1
+                    if tank.hit():
+                        self.ai_killed += 1
+                break
 
-            # ── 子弹更新 ──
-            for b in bullets[:]:
-                b.update(game_map)
-                if not b.alive:
-                    bullets.remove(b)
-                    continue
+    def draw(self, surface):
+        surface.fill((10, 10, 10))
 
-                col, row = pos_to_grid(int(b.x), int(b.y))
-                tile = game_map.get(col, row)
+        # 绘制游戏区域背景
+        pygame.draw.rect(surface, C_BLACK, (0, 0, PLAY_W, PLAY_H))
 
-                # 子弹击中主将
-                if tile == COMMANDER:
-                    game_map.set(col, row, EMPTY)
-                    # 判断是哪个主将
-                    if col in range(18, 21) and row in range(22, 27):
-                        game_state = "commander_lost_player"
-                    elif col in range(18, 21) and row in range(2, 7):
-                        game_state = "commander_lost_ai"
-                    bullets.remove(b)
-                    continue
+        # 地图
+        self.game_map.draw(surface)
 
-                # 子弹击中坦克
-                hit_tank = None
-                for t in all_tanks:
-                    if not t.alive:
-                        continue
-                    # 友军子弹不伤友军
-                    if b.team == t.team:
-                        continue
-                    if t.rect.colliderect(b.rect):
-                        hit_tank = t
-                        break
+        # 子弹
+        self.bullets.draw(surface)
 
-                if hit_tank:
-                    bullets.remove(b)
-                    if isinstance(hit_tank, PlayerTank):
-                        remaining = hit_tank.die()
-                        if remaining <= 0:
-                            game_state = "player_lose"
+        # 坦克
+        for t in self.all_tanks:
+            if isinstance(t, PlayerTank):
+                t.draw(surface)
+            else:
+                if t.alive:
+                    surface.blit(t.image, t.rect)
+
+        # 主将
+        for cmd in [self.ai_cmd, self.player_cmd]:
+            if cmd and cmd.alive:
+                surface.blit(cmd.image, cmd.rect)
+
+        # HUD
+        self.game.hud.draw(
+            surface, self.player,
+            self.game.level_cfg["ai_total"],
+            self.ai_killed,
+            len(self.enemies),
+            self.game.current_level,
+        )
+
+    def exit(self):
+        pass
+
+
+# ──────────────────────────────────────────
+#  GameOverState
+# ──────────────────────────────────────────
+class GameOverState(State):
+    def enter(self):
+        won = self.game.end_reason in ("win", "commander_lost_ai")
+        self.won = won
+        self.screen = GameOverScreen()
+
+    def handle_events(self, events):
+        for e in events:
+            if e.type == pygame.KEYDOWN:
+                if e.key == pygame.K_r:
+                    self.game.start_game(self.game.current_level)
+                elif e.key == pygame.K_q:
+                    self.game.state_machine.change("title")
+
+    def draw(self, surface):
+        self.screen.draw(surface, self.won)
+
+
+# ──────────────────────────────────────────
+#  TitleState
+# ──────────────────────────────────────────
+class TitleState(State):
+    def enter(self):
+        self.screen = TitleScreen()
+        self.flash_timer = 0
+
+    def handle_events(self, events):
+        for e in events:
+            if e.type == pygame.KEYDOWN and e.key == pygame.K_RETURN:
+                self.game.start_game(1)
+
+    def update(self, dt):
+        self.flash_timer = (self.flash_timer + 1) % 60
+
+    def draw(self, surface):
+        self.screen.draw(surface, self.flash_timer < 30)
+
+
+# ──────────────────────────────────────────
+#  Game — 主控
+# ──────────────────────────────────────────
+class Game:
+    def __init__(self):
+        pygame.init()
+        self.screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
+        pygame.display.set_caption("坦克大战 v2.0")
+        self.clock = pygame.time.Clock()
+        self.running = True
+
+        self.hud = HUD()
+        self.state_machine = StateMachine()
+        self.state_machine.add("title", TitleState(self))
+        self.state_machine.change("title")
+
+        self.current_level = 1
+        self.level_data = None
+        self.level_cfg = None
+        self.end_reason = None
+
+    def start_game(self, level):
+        self.current_level = level
+        self.level_data, self.level_cfg = get_level(level)
+        self.state_machine.add("playing", PlayingState(self))
+        self.state_machine.change("playing")
+
+    def run(self):
+        while self.running:
+            events = pygame.event.get()
+            for e in events:
+                if e.type == pygame.QUIT:
+                    self.running = False
+
+            state = self.state_machine.current
+            if state is None:
+                break
+
+            state.handle_events(events)
+            state.update(self.clock.tick(FPS))
+
+            # 检查 PlayingState 是否结束
+            if isinstance(state, PlayingState) and state.end_reason:
+                self.end_reason = state.end_reason
+                won = state.end_reason in ("win", "commander_lost_ai")
+                if won:
+                    # 胜利 → 下一关
+                    if self.current_level < 2:
+                        self.start_game(self.current_level + 1)
                     else:
-                        hit_tank.alive = False
-                    continue
+                        # 已通关
+                        self.state_machine.add("gameover", GameOverState(self))
+                        self.state_machine.change("gameover")
+                else:
+                    self.state_machine.add("gameover", GameOverState(self))
+                    self.state_machine.change("gameover")
+                continue
 
-            # ── 胜利条件 ──
-            if ai_killed >= AI_TOTAL and len(ai_tanks) == 0:
-                game_state = "player_win"
+            state.draw(self.screen)
+            pygame.display.flip()
 
-        # ══════════════════════════════════════
-        # 绘制
-        # ══════════════════════════════════════
-        screen.fill(COLOR_BLACK)
-        draw_grid(screen)
-        game_map.draw(screen)
-
-        # 绘制 AI 坦克
-        for ai in ai_tanks:
-            ai.draw(screen)
-
-        # 绘制玩家
-        player.draw(screen)
-
-        # 绘制子弹
-        for b in bullets:
-            b.draw(screen)
-
-        # 绘制 HUD
-        draw_hud(screen, player, ai_killed, ai_tanks, game_state, font)
-
-        # 顶部 AI 计数器
-        active_ai = len(ai_tanks)
-        pool_left = ai_pool
-        try:
-            counter_font = pygame.font.SysFont("simhei", 16)
-        except Exception:
-            counter_font = pygame.font.Font(None, 16)
-        counter_text = f"A 方: 活跃 {active_ai}/{AI_MAX_ACTIVE}  待命 {pool_left}/{AI_TOTAL}"
-        surf2 = counter_font.render(counter_text, True, (200, 150, 150))
-        screen.blit(surf2, (SCREEN_WIDTH // 2 - 120, 5))
-
-        pygame.display.flip()
-        clock.tick(FPS)
-
-    pygame.quit()
-    sys.exit()
+        pygame.quit()
+        sys.exit()
 
 
 if __name__ == "__main__":
-    main()
+    Game().run()
