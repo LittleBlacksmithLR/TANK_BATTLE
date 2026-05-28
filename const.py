@@ -1,11 +1,11 @@
 """游戏常量"""
 
-# ── 窗口 ──
-COLS = 20
-ROWS = 15
+# ── 窗口（4 倍分辨率：40×30 格子） ──
+COLS = 40
+ROWS = 30
 CELL_SIZE = 40
-SCREEN_WIDTH = COLS * CELL_SIZE   # 800
-SCREEN_HEIGHT = ROWS * CELL_SIZE  # 600
+SCREEN_WIDTH = COLS * CELL_SIZE   # 1600
+SCREEN_HEIGHT = ROWS * CELL_SIZE  # 1200
 FPS = 60
 
 # ── 图块类型 ──

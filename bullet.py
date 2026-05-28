@@ -2,7 +2,7 @@
 
 import math
 import pygame
-from const import CELL_SIZE, COLOR_RED, DIR_VEC
+from const import CELL_SIZE, COLOR_RED, DIR_VEC, SCREEN_WIDTH, SCREEN_HEIGHT
 
 
 class Bullet:
@@ -29,8 +29,8 @@ class Bullet:
         self.y += vec[1] * self.speed
 
         # 边界检测
-        if (self.x < 0 or self.x > 800 or
-                self.y < 0 or self.y > 600):
+        if (self.x < 0 or self.x > SCREEN_WIDTH or
+                self.y < 0 or self.y > SCREEN_HEIGHT):
             self.alive = False
             return
 

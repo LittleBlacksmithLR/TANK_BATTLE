@@ -4,7 +4,7 @@ import sys
 import pygame
 
 from const import (
-    SCREEN_WIDTH, SCREEN_HEIGHT, FPS, CELL_SIZE,
+    SCREEN_WIDTH, SCREEN_HEIGHT, FPS, CELL_SIZE, COLS, ROWS,
     EMPTY, WALL, STEEL, WATER, BUNKER, COMMANDER,
     COLOR_BLACK, COLOR_GREEN, COLOR_DARK_GREEN, DIR_VEC,
 )
@@ -43,7 +43,7 @@ class Tank:
     def can_move_to(self, dcol, drow, game_map):
         nc = self.col + dcol
         nr = self.row + drow
-        if nc < 0 or nc >= 20 or nr < 0 or nr >= 15:
+        if nc < 0 or nc >= COLS or nr < 0 or nr >= ROWS:
             return False
         return game_map.get(nc, nr) == EMPTY
 
@@ -122,7 +122,7 @@ def main():
     clock = pygame.time.Clock()
 
     def reset_game():
-        return GameMap(), Tank(9, 13), [], False
+        return GameMap(), Tank(19, 28), [], False
 
     game_map, tank, bullets, game_over = reset_game()
 
