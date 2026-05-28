@@ -1,4 +1,4 @@
-"""坦克大战 - 主入口"""
+"""坦克大战 - 主入口（格子移动版）"""
 
 import sys
 import pygame
@@ -11,68 +11,53 @@ from const import (
 from map import GameMap, pos_to_grid
 from bullet import Bullet
 
+MOVE_DELAY = 8  # 长按时每 8 帧移动一格
+
 
 class Tank:
-    """玩家坦克"""
+    """玩家坦克 — 格子移动"""
 
-    def __init__(self, x, y):
-        self.x = x
-        self.y = y
+    def __init__(self, col, row):
+        self.col = col
+        self.row = row
         self.width = CELL_SIZE - 4
         self.height = CELL_SIZE - 4
-        self.speed = 3
         self.direction = "up"
         self.alive = True
-        self.cooldown = 0          # 射击冷却帧计数
-        self.cooldown_max = 12     # 冷却帧数
+        self.shoot_cd = 0
+        self.shoot_cd_max = 15
+        self.move_timer = 0
+
+    @property
+    def x(self):
+        return self.col * CELL_SIZE + 2
+
+    @property
+    def y(self):
+        return self.row * CELL_SIZE + 2
 
     @property
     def rect(self):
         return pygame.Rect(self.x, self.y, self.width, self.height)
 
-    def move(self, dx, dy):
-        self.x += dx
-        self.y += dy
-
-    def clamp(self):
-        self.x = max(0, min(self.x, SCREEN_WIDTH - self.width))
-        self.y = max(0, min(self.y, SCREEN_HEIGHT - self.height))
-
-    def can_move_to(self, dx, dy, game_map):
-        """检测目标位置是否与不可通行图块重叠"""
-        new_rect = self.rect.move(dx, dy)
-
-        # 边界检测
-        if (new_rect.left < 0 or new_rect.right > SCREEN_WIDTH or
-                new_rect.top < 0 or new_rect.bottom > SCREEN_HEIGHT):
+    def can_move_to(self, dcol, drow, game_map):
+        nc = self.col + dcol
+        nr = self.row + drow
+        if nc < 0 or nc >= 20 or nr < 0 or nr >= 15:
             return False
-
-        # 与地图碰撞 — 检测坦克覆盖的所有格子
-        left_col = new_rect.left // CELL_SIZE
-        right_col = (new_rect.right - 1) // CELL_SIZE
-        top_row = new_rect.top // CELL_SIZE
-        bottom_row = (new_rect.bottom - 1) // CELL_SIZE
-
-        for row in range(top_row, bottom_row + 1):
-            for col in range(left_col, right_col + 1):
-                tile = game_map.get(col, row)
-                if tile not in (EMPTY,):
-                    return False
-        return True
+        return game_map.get(nc, nr) == EMPTY
 
     def shoot(self):
-        """发射子弹"""
-        cx = self.x + self.width // 2
-        cy = self.y + self.height // 2
-        # 子弹出生在坦克前方
+        cx = self.col * CELL_SIZE + CELL_SIZE // 2
+        cy = self.row * CELL_SIZE + CELL_SIZE // 2
         vec = DIR_VEC[self.direction]
-        bx = cx + vec[0] * (self.width // 2 + 2)
-        by = cy + vec[1] * (self.height // 2 + 2)
+        bx = cx + vec[0] * (CELL_SIZE // 2 + 2)
+        by = cy + vec[1] * (CELL_SIZE // 2 + 2)
         return Bullet(bx, by, self.direction)
 
     def update(self):
-        if self.cooldown > 0:
-            self.cooldown -= 1
+        if self.shoot_cd > 0:
+            self.shoot_cd -= 1
 
     def draw(self, surface):
         if not self.alive:
@@ -81,14 +66,10 @@ class Tank:
         cx = self.x + self.width // 2
         cy = self.y + self.height // 2
 
-        # 车身
         pygame.draw.rect(surface, COLOR_GREEN, rect, border_radius=3)
         pygame.draw.rect(surface, COLOR_DARK_GREEN, rect, 2, border_radius=3)
-
-        # 炮塔
         pygame.draw.circle(surface, COLOR_DARK_GREEN, (cx, cy), 10)
 
-        # 炮管
         if self.direction == "up":
             pygame.draw.rect(surface, COLOR_DARK_GREEN, (cx - 3, self.y - 6, 6, self.height // 2 + 6))
         elif self.direction == "down":
@@ -98,7 +79,6 @@ class Tank:
         elif self.direction == "right":
             pygame.draw.rect(surface, COLOR_DARK_GREEN, (self.x + self.width // 2, cy - 3, self.width // 2 + 6, 6))
 
-        # 履带
         for dx, dy, w, h in [
             (2, 2, 6, self.height - 4),
             (self.width - 8, 2, 6, self.height - 4),
@@ -108,7 +88,6 @@ class Tank:
 
 
 def draw_hud(surface, tank, bullets, game_over=False):
-    """显示 HUD 信息"""
     try:
         font = pygame.font.SysFont("simhei", 18)
     except Exception:
@@ -120,7 +99,7 @@ def draw_hud(surface, tank, bullets, game_over=False):
         return
 
     info = [
-        f"坐标: ({tank.x}, {tank.y})  方向: {tank.direction}",
+        f"坐标: ({tank.col}, {tank.row})  方向: {tank.direction}",
         f"子弹数: {len(bullets)}",
         "WASD 移动 | J/空格 射击",
     ]
@@ -130,7 +109,6 @@ def draw_hud(surface, tank, bullets, game_over=False):
 
 
 def draw_grid(surface):
-    """画半透明网格线"""
     for x in range(0, SCREEN_WIDTH, CELL_SIZE):
         pygame.draw.line(surface, (40, 40, 40), (x, 0), (x, SCREEN_HEIGHT))
     for y in range(0, SCREEN_HEIGHT, CELL_SIZE):
@@ -143,73 +121,72 @@ def main():
     pygame.display.set_caption("坦克大战")
     clock = pygame.time.Clock()
 
-    # ── 游戏状态 ──
     def reset_game():
-        game_map = GameMap()
-        tank = Tank(CELL_SIZE * 9, CELL_SIZE * 13)  # 底部中央
-        bullets = []
-        game_over = False
-        return game_map, tank, bullets, game_over
+        return GameMap(), Tank(9, 13), [], False
 
     game_map, tank, bullets, game_over = reset_game()
 
-    # 按键跟踪
-    pressed_keys = set()
+    # 按键映射
     KEY_MAP = {
-        pygame.K_w: "up", pygame.K_UP: "up",
-        pygame.K_s: "down", pygame.K_DOWN: "down",
-        pygame.K_a: "left", pygame.K_LEFT: "left",
-        pygame.K_d: "right", pygame.K_RIGHT: "right",
+        pygame.K_w: (0, -1, "up"), pygame.K_UP: (0, -1, "up"),
+        pygame.K_s: (0, 1, "down"), pygame.K_DOWN: (0, 1, "down"),
+        pygame.K_a: (-1, 0, "left"), pygame.K_LEFT: (-1, 0, "left"),
+        pygame.K_d: (1, 0, "right"), pygame.K_RIGHT: (1, 0, "right"),
     }
+
+    held_dirs: dict[int, tuple[int, int, str]] = {}  # key -> (dcol, drow, dir_name)
 
     running = True
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
+
             elif event.type == pygame.KEYDOWN:
                 if event.key in KEY_MAP:
-                    pressed_keys.add(event.key)
-                elif event.key in (pygame.K_r,) and game_over:
+                    dcol, drow, dir_name = KEY_MAP[event.key]
+                    held_dirs[event.key] = (dcol, drow, dir_name)
+                    # 新按键按下 → 立即尝试移动
+                    if not game_over and tank.alive and tank.can_move_to(dcol, drow, game_map):
+                        tank.direction = dir_name
+                        tank.col += dcol
+                        tank.row += drow
+                        tank.move_timer = MOVE_DELAY
+                elif event.key == pygame.K_r and game_over:
                     game_map, tank, bullets, game_over = reset_game()
                 elif event.key in (pygame.K_j, pygame.K_SPACE):
-                    # 射击
-                    if not game_over and tank.alive and tank.cooldown == 0:
+                    if not game_over and tank.alive and tank.shoot_cd == 0:
                         bullets.append(tank.shoot())
-                        tank.cooldown = tank.cooldown_max
+                        tank.shoot_cd = tank.shoot_cd_max
+
             elif event.type == pygame.KEYUP:
-                pressed_keys.discard(event.key)
+                held_dirs.pop(event.key, None)
 
+        # ── 更新逻辑 ──
         if not game_over:
-            # ── 坦克移动 ──
-            dx, dy = 0, 0
-            active_dir = None
-            for key in pressed_keys:
-                if key in KEY_MAP:
-                    active_dir = KEY_MAP[key]
-                    vec = DIR_VEC[active_dir]
-                    dx += vec[0]
-                    dy += vec[1]
-            if active_dir is not None:
-                tank.direction = active_dir
-                if dx != 0 and dy != 0:
-                    dx *= 0.707
-                    dy *= 0.707
-                dx = round(dx * tank.speed)
-                dy = round(dy * tank.speed)
-                if tank.can_move_to(dx, dy, game_map):
-                    tank.move(dx, dy)
-
-            tank.clamp()
             tank.update()
 
-            # ── 子弹更新 ──
+            # 长按自动重复移动
+            if held_dirs:
+                # 用最后按下的方向
+                last_key = list(held_dirs.keys())[-1]
+                dcol, drow, dir_name = held_dirs[last_key]
+                tank.direction = dir_name
+
+                if tank.move_timer > 0:
+                    tank.move_timer -= 1
+                else:
+                    if tank.can_move_to(dcol, drow, game_map):
+                        tank.col += dcol
+                        tank.row += drow
+                    tank.move_timer = MOVE_DELAY
+
+            # 子弹更新
             for b in bullets[:]:
                 b.update(game_map)
                 if not b.alive:
                     bullets.remove(b)
                     continue
-                # 检测子弹是否击中主将
                 col, row = pos_to_grid(int(b.x), int(b.y))
                 if game_map.get(col, row) == COMMANDER:
                     game_map.set(col, row, EMPTY)
