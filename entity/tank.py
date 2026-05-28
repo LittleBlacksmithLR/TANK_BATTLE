@@ -160,7 +160,7 @@ class EnemyTank(Tank):
         self.shoot_cd = 15
         self.dir_timer = 30
         # 移动节拍（0=每帧，1=每2帧...）
-        move_cd_map = {"basic": 1, "fast": 0, "armor": 2, "elite": 1}
+        move_cd_map = {"basic": 3, "fast": 2, "armor": 5, "elite": 3}
         self.move_interval = move_cd_map.get(etype, 1)
         self.move_counter = 0
 
