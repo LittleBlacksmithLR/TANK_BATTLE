@@ -19,7 +19,7 @@ def pos_to_grid(x, y):
 
 
 def _generate_map():
-    """程序化生成 40×30 地图"""
+    """程序化生成 40×30 地图 — 双阵营布局"""
     data = [[EMPTY] * COLS for _ in range(ROWS)]
 
     def place(col, row, tile, w=1, h=1):
@@ -29,74 +29,75 @@ def _generate_map():
                     data[r][c] = tile
 
     # ══════════════════════════════════════════
-    # 四角砖墙集群（每个集群 6×3）
+    # A 方（AI）基地 — 顶部
     # ══════════════════════════════════════════
-    # 左上角
-    place(1, 2, WALL, 3, 3)
-    place(6, 1, WALL, 3, 3)
-    place(3, 5, WALL, 2, 1)
-    # 右上角
-    place(31, 2, WALL, 3, 3)
-    place(36, 1, WALL, 3, 3)
-    place(35, 5, WALL, 2, 1)
-    # 左下角
-    place(1, 25, WALL, 3, 3)
-    place(6, 26, WALL, 3, 3)
-    place(3, 24, WALL, 2, 1)
-    # 右下角
-    place(31, 25, WALL, 3, 3)
-    place(36, 26, WALL, 3, 3)
-    place(35, 24, WALL, 2, 1)
+    # 外墙
+    place(16, 2, WALL, 8, 1)    # 上
+    place(16, 2, WALL, 1, 6)    # 左
+    place(23, 2, WALL, 1, 6)    # 右
+    place(16, 7, WALL, 8, 1)    # 下
+    # 底部留缺口 (18, 7)-(19, 7)
+    place(16, 7, WALL, 2, 1)    # 下左
+    place(22, 7, WALL, 2, 1)    # 下右
+    # 内部主将
+    place(19, 4, COMMANDER)     # A 方主将
 
     # ══════════════════════════════════════════
-    # 两侧钢铁
+    # B 方（玩家）基地 — 底部
     # ══════════════════════════════════════════
-    place(10, 4, STEEL, 2, 2)
-    place(28, 4, STEEL, 2, 2)
-    place(10, 24, STEEL, 2, 2)
-    place(28, 24, STEEL, 2, 2)
-
-    # 中部两侧钢铁
-    place(8, 12, STEEL, 2, 2)
-    place(30, 12, STEEL, 2, 2)
-    place(8, 16, STEEL, 2, 2)
-    place(30, 16, STEEL, 2, 2)
-
-    # ══════════════════════════════════════════
-    # 水域 — 横向河 + 纵向河
-    # ══════════════════════════════════════════
-    # 上横河 (row 7~8)
-    place(13, 7, WATER, 14, 2)
-    # 下横河 (row 21~22)
-    place(13, 21, WATER, 14, 2)
-    # 左纵河 (col 12~13)
-    place(12, 9, WATER, 2, 12)
-    # 右纵河 (col 26~27)
-    place(26, 9, WATER, 2, 12)
+    place(16, 22, WALL, 8, 1)   # 上
+    place(16, 22, WALL, 1, 6)   # 左
+    place(23, 22, WALL, 1, 6)   # 右
+    place(16, 27, WALL, 8, 1)   # 下
+    # 顶部留缺口 (18, 22)-(19, 22)
+    place(16, 22, WALL, 2, 1)   # 上左
+    place(22, 22, WALL, 2, 1)   # 上右
+    # 内部主将
+    place(19, 24, COMMANDER)    # B 方主将
 
     # ══════════════════════════════════════════
-    # 中央碉堡 (6×6) + 主将
+    # 四角砖墙集群
     # ══════════════════════════════════════════
-    place(17, 12, BUNKER, 6, 6)
-    place(19, 14, COMMANDER, 2, 2)
+    # 左上
+    place(1, 10, WALL, 3, 3)
+    place(6, 9, WALL, 3, 3)
+    place(3, 13, WALL, 2, 1)
+    # 右上
+    place(31, 10, WALL, 3, 3)
+    place(36, 9, WALL, 3, 3)
+    place(35, 13, WALL, 2, 1)
+    # 左下
+    place(1, 17, WALL, 3, 3)
+    place(6, 18, WALL, 3, 3)
+    place(3, 16, WALL, 2, 1)
+    # 右下
+    place(31, 17, WALL, 3, 3)
+    place(36, 18, WALL, 3, 3)
+    place(35, 16, WALL, 2, 1)
 
     # ══════════════════════════════════════════
-    # 碉堡周围的附加墙壁路障
+    # 钢铁壁垒
     # ══════════════════════════════════════════
-    place(16, 11, WALL, 1, 1)
-    place(23, 11, WALL, 1, 1)
-    place(16, 18, WALL, 1, 1)
-    place(23, 18, WALL, 1, 1)
-    place(15, 14, WALL, 1, 2)
-    place(24, 14, WALL, 1, 2)
+    place(10, 10, STEEL, 2, 2)
+    place(28, 10, STEEL, 2, 2)
+    place(10, 18, STEEL, 2, 2)
+    place(28, 18, STEEL, 2, 2)
+    # 中场两侧
+    place(8, 14, STEEL, 2, 2)
+    place(30, 14, STEEL, 2, 2)
 
     # ══════════════════════════════════════════
-    # 散落的小墙块（增加趣味）
+    # 水域 — 横向分隔河道
     # ══════════════════════════════════════════
-    place(14, 11, WALL, 1, 1)
-    place(25, 11, WALL, 1, 1)
-    place(14, 18, WALL, 1, 1)
-    place(25, 18, WALL, 1, 1)
+    place(13, 11, WATER, 14, 2)
+
+    # ══════════════════════════════════════════
+    # 散落路障
+    # ══════════════════════════════════════════
+    place(14, 14, WALL, 2, 1)
+    place(24, 14, WALL, 2, 1)
+    place(14, 15, WALL, 2, 1)
+    place(24, 15, WALL, 2, 1)
 
     return data
 
@@ -144,7 +145,7 @@ class GameMap:
                 elif t == COMMANDER:
                     self._draw_commander(surface, rect)
 
-    # ── 绘制方法 ──
+    # ── 绘制 ──
 
     def _draw_wall(self, surface, rect):
         pygame.draw.rect(surface, COLOR_WALL, rect)
@@ -159,8 +160,7 @@ class GameMap:
     def _draw_steel(self, surface, rect):
         pygame.draw.rect(surface, COLOR_STEEL, rect)
         pygame.draw.rect(surface, COLOR_STEEL_DARK, rect, 2)
-        cx = rect.centerx
-        cy = rect.centery
+        cx, cy = rect.centerx, rect.centery
         pygame.draw.line(surface, COLOR_STEEL_DARK, (rect.left + 4, cy), (rect.right - 4, cy), 2)
         pygame.draw.line(surface, COLOR_STEEL_DARK, (cx, rect.top + 4), (cx, rect.bottom - 4), 2)
         for (dx, dy) in [(6, 6), (6, -6), (-6, 6), (-6, -6)]:
@@ -168,8 +168,7 @@ class GameMap:
 
     def _draw_water(self, surface, rect):
         pygame.draw.rect(surface, COLOR_WATER, rect)
-        cx = rect.centerx
-        cy = rect.centery
+        cx, cy = rect.centerx, rect.centery
         for i in range(3):
             offset = i * 5
             pygame.draw.arc(surface, COLOR_WATER_LIGHT,
@@ -182,11 +181,11 @@ class GameMap:
         pygame.draw.rect(surface, COLOR_BUNKER_DARK, rect, 2)
 
     def _draw_commander(self, surface, rect):
-        pygame.draw.rect(surface, COLOR_BUNKER, rect)
-        pygame.draw.rect(surface, COLOR_BUNKER_DARK, rect, 2)
+        pygame.draw.rect(surface, (200, 180, 150), rect)
+        pygame.draw.rect(surface, (160, 140, 110), rect, 2)
         cx, cy = rect.centerx, rect.centery
         pygame.draw.circle(surface, COLOR_COMMANDER, (cx, cy), 10)
         pygame.draw.circle(surface, COLOR_COMMANDER_DARK, (cx, cy), 10, 2)
-        pygame.draw.line(surface, (100, 80, 50), (cx, cy - 10), (cx, cy - 18), 2)
-        flag_pts = [(cx, cy - 18), (cx + 10, cy - 14), (cx, cy - 10)]
+        pygame.draw.line(surface, (100, 80, 50), (cx, cy - 10), (cx, cy - 16), 2)
+        flag_pts = [(cx, cy - 16), (cx + 9, cy - 12), (cx, cy - 8)]
         pygame.draw.polygon(surface, COLOR_COMMANDER, flag_pts)
