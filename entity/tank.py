@@ -149,7 +149,7 @@ class EnemyTank(Tank):
     def __init__(self, col, row, etype="basic"):
         self.etype = etype
         hp_map = {"basic": 1, "fast": 1, "armor": 4, "elite": 1}
-        speed_map = {"basic": 1, "fast": 2, "armor": 1, "elite": 1}
+        speed_map = {"basic": 1, "fast": 1, "armor": 1, "elite": 1}
         cd_map = {"basic": 30, "fast": 20, "armor": 45, "elite": 25}
 
         super().__init__(col, row, "enemy", DIR_DOWN)
