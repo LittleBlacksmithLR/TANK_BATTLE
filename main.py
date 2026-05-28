@@ -16,6 +16,7 @@ from map.levels import get_level
 from entity.tank import PlayerTank, EnemyTank
 from entity.bullet import Bullet
 from entity.base import Commander
+from entity.explosion import Explosion
 from ui.hud import HUD
 from ui.screens import TitleScreen, GameOverScreen
 
@@ -41,7 +42,7 @@ class PlayingState(State):
         self.ai_cmd = None
         self.player_cmd = None
         if len(cmd_positions) >= 2:
-            self.ai_cmd = Commander(cmd_positions[0][0], cmd_positions[0][1], "ai")
+            self.ai_cmd = Commander(cmd_positions[0][0], cmd_positions[0][1], "enemy")
             self.player_cmd = Commander(cmd_positions[1][0], cmd_positions[1][1], "player")
         elif len(cmd_positions) == 1:
             self.player_cmd = Commander(cmd_positions[0][0], cmd_positions[0][1], "player")
@@ -74,6 +75,8 @@ class PlayingState(State):
         random.shuffle(self.ai_types)
 
         self.end_reason = None  # "win", "lose", "commander_lost"
+        self.explosions = []
+        self._pending_end_reason = None
 
     def _find_commanders(self, data):
         positions = []
@@ -96,11 +99,31 @@ class PlayingState(State):
                     self.game.state_machine.change("title")
 
     def update(self, dt):
+        # ── 爆炸更新（始终运行） ──
+        for exp in list(self.explosions):
+            exp.update()
+            if exp.done:
+                self.explosions.remove(exp)
+
         if self.end_reason:
             return
 
-        # ── 玩家移动（长按） ──
-        if self.player.alive and self.player.respawn_timer == 0:
+        # ── 结束序列：等爆炸全部播完 ──
+        if self._pending_end_reason is not None:
+            if self.explosions:
+                # 爆炸未结束：继续更新 AI 和子弹，不接受玩家操作
+                for e in self.enemies:
+                    if e.alive:
+                        e.update(self.game_map, self.all_tanks, self.bullets)
+                self._update_bullets()
+                self.player.update(self.game_map, self.all_tanks)
+            else:
+                # 所有爆炸播完 → 正式结束
+                self.end_reason = self._pending_end_reason
+            return
+
+        # ── 玩家移动（长按，带冷却） ──
+        if self.player.alive and self.player.respawn_timer == 0 and self.player.move_cd == 0:
             keys = pygame.key.get_pressed()
             dx, dy = 0, 0
             dir_map = {
@@ -118,6 +141,7 @@ class PlayingState(State):
                 if self.player.can_move(dx, dy, self.game_map, self.all_tanks):
                     self.player.col += dx
                     self.player.row += dy
+                    self.player.move_cd = self.player.move_cd_max
 
         # ── AI 生成 ──
         self._update_spawning()
@@ -133,9 +157,9 @@ class PlayingState(State):
         # ── 玩家重生 ──
         self.player.update(self.game_map, self.all_tanks)
 
-        # ── 胜利条件 ──
+        # ── 胜利条件（等爆炸播完） ──
         if self.ai_killed >= self.game.level_cfg["ai_total"] and len(self.enemies) == 0:
-            self.end_reason = "win"
+            self._pending_end_reason = "win"
 
     def _update_spawning(self):
         if self.spawn_timer > 0:
@@ -195,9 +219,12 @@ class PlayingState(State):
                     cmd.alive = False
                     hit_cmd = True
                     if cmd.team == "player":
-                        self.end_reason = "commander_lost_player"
+                        self._pending_end_reason = "commander_lost_player"
                     else:
-                        self.end_reason = "commander_lost_ai"
+                        self._pending_end_reason = "commander_lost_ai"
+                    self.explosions.append(
+                        Explosion(cmd.col * CELL + CELL // 2, cmd.row * CELL + CELL // 2, big=True)
+                    )
                     break
 
             if hit_cmd:
@@ -213,10 +240,16 @@ class PlayingState(State):
                 if isinstance(tank, PlayerTank):
                     lives = tank.die()
                     if lives <= 0:
-                        self.end_reason = "lose"
+                        self._pending_end_reason = "lose"
+                        self.explosions.append(
+                            Explosion(tank.col * CELL + CELL // 2, tank.row * CELL + CELL // 2, big=True)
+                        )
                 else:
                     if tank.hit():
                         self.ai_killed += 1
+                        self.explosions.append(
+                            Explosion(tank.col * CELL + CELL // 2, tank.row * CELL + CELL // 2)
+                        )
                         self.enemies.remove(tank)
                         self.all_tanks.remove(tank)
                 break
@@ -245,6 +278,10 @@ class PlayingState(State):
         for cmd in [self.ai_cmd, self.player_cmd]:
             if cmd and cmd.alive:
                 surface.blit(cmd.image, cmd.rect)
+
+        # 爆炸特效（最上层）
+        for exp in self.explosions:
+            exp.draw(surface)
 
         # HUD
         self.game.hud.draw(

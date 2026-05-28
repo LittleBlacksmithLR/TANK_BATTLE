@@ -26,12 +26,12 @@ def _place_block(grid, col, row, tile):
 def _level1():
     g = _make_grid()
 
-    # ── AI 基地（顶部） ──
-    _place(g, 10, 0, WALL, 6, 1)   # 上墙
-    _place(g, 10, 0, WALL, 1, 5)   # 左墙
-    _place(g, 15, 0, WALL, 1, 5)   # 右墙
-    _place(g, 10, 4, WALL, 6, 1)   # 下墙
-    _place(g, 12, 2, COMMANDER)    # AI 主将
+    # ── AI 基地（顶部）─ 3×3 紧围主将 ──
+    _place(g, 10, 1, WALL, 3, 1)   # 上墙
+    _place(g, 10, 1, WALL, 1, 3)   # 左墙
+    _place(g, 12, 1, WALL, 1, 3)   # 右墙
+    _place(g, 10, 3, WALL, 3, 1)   # 下墙
+    _place(g, 11, 2, COMMANDER)    # AI 主将
 
     # ── 砖墙群（上半场） ──
     _place_block(g, 2, 1, WALL)
@@ -96,12 +96,12 @@ def _level1():
 def _level2():
     g = _make_grid()
 
-    # ── AI 基地 ──
-    _place(g, 10, 0, WALL, 6, 1)
-    _place(g, 10, 0, WALL, 1, 5)
-    _place(g, 15, 0, WALL, 1, 5)
-    _place(g, 10, 4, WALL, 6, 1)
-    _place(g, 12, 2, COMMANDER)
+    # ── AI 基地（顶部）─ 3×3 紧围主将 ──
+    _place(g, 10, 1, WALL, 3, 1)
+    _place(g, 10, 1, WALL, 1, 3)
+    _place(g, 12, 1, WALL, 1, 3)
+    _place(g, 10, 3, WALL, 3, 1)
+    _place(g, 11, 2, COMMANDER)
 
     # ── 大量砖墙 ──
     for bx in range(0, 26, 4):

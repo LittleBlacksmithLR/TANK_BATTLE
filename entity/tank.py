@@ -45,36 +45,45 @@ class Tank(pygame.sprite.Sprite):
         self.rect.topleft = (self.px, self.py)
 
     def _update_image(self):
-        """按方向重绘坦克"""
+        """按方向重绘坦克（20×20 精绘版）"""
         self.image.fill((0, 0, 0, 0))
         self.image.set_colorkey((0, 0, 0))
         w, h = _TANK_W, _TANK_H
         cx, cy = w // 2, h // 2
 
-        color = C_GREEN if self.team == "player" else C_RED
-        dcolor = C_DGREEN if self.team == "player" else C_DRED
+        body_color = C_GREEN if self.team == "player" else C_RED
+        dark_color = C_DGREEN if self.team == "player" else C_DRED
 
-        # 车身
-        pygame.draw.rect(self.image, color, (0, 0, w, h), border_radius=2)
-        pygame.draw.rect(self.image, dcolor, (0, 0, w, h), 2, border_radius=2)
+        TRACK_W = 5
+        BODY_X = TRACK_W
+        BODY_W = w - 2 * TRACK_W
+        BODY_Y = 2
+        BODY_H = h - 4
 
-        # 炮塔
-        r = 7
-        pygame.draw.circle(self.image, dcolor, (cx, cy), r)
+        # ── 履带（左右两侧 + 齿纹横线） ──
+        for tx in (0, w - TRACK_W):
+            pygame.draw.rect(self.image, (55, 55, 55), (tx, 0, TRACK_W, h), border_radius=1)
+            for i in range(0, h, 4):
+                pygame.draw.line(self.image, (35, 35, 35), (tx + 1, i), (tx + TRACK_W - 2, i))
 
-        # 炮管
+        # ── 车身 ──
+        pygame.draw.rect(self.image, body_color, (BODY_X, BODY_Y, BODY_W, BODY_H), border_radius=2)
+        pygame.draw.rect(self.image, dark_color, (BODY_X, BODY_Y, BODY_W, BODY_H), 1, border_radius=2)
+
+        # ── 炮塔（双层圆） ──
+        pygame.draw.circle(self.image, dark_color, (cx, cy), 5)
+        pygame.draw.circle(self.image, body_color, (cx, cy), 3)
+
+        # ── 炮管 ──
+        BW = 3
         if self.direction == DIR_UP:
-            pygame.draw.rect(self.image, dcolor, (cx - 2, 0, 4, cy - r + 2))
+            pygame.draw.rect(self.image, dark_color, (cx - BW // 2, 0, BW, cy - 4))
         elif self.direction == DIR_DOWN:
-            pygame.draw.rect(self.image, dcolor, (cx - 2, cy + r - 2, 4, h - cy - r + 2))
+            pygame.draw.rect(self.image, dark_color, (cx - BW // 2, cy + 4, BW, h - cy - 4))
         elif self.direction == DIR_LEFT:
-            pygame.draw.rect(self.image, dcolor, (0, cy - 2, cx - r + 2, 4))
+            pygame.draw.rect(self.image, dark_color, (0, cy - BW // 2, cx - 4, BW))
         else:  # RIGHT
-            pygame.draw.rect(self.image, dcolor, (cx + r - 2, cy - 2, w - cx - r + 2, 4))
-
-        # 履带
-        for dx, dy in [(2, 2), (w - 6, 2)]:
-            pygame.draw.rect(self.image, dcolor, (dx, dy, 4, h - 4), border_radius=1)
+            pygame.draw.rect(self.image, dark_color, (cx + 4, cy - BW // 2, w - cx - 4, BW))
 
     def set_direction(self, d):
         if d != self.direction:
@@ -117,9 +126,13 @@ class PlayerTank(Tank):
         self.respawn_timer = 0
         self.spawn_col = col
         self.spawn_row = row
+        self.move_cd = 0
+        self.move_cd_max = 4
 
     def update(self, game_map=None, tank_group=None, *args, **kwargs):
         super().update()
+        if self.move_cd > 0:
+            self.move_cd -= 1
         if self.invincible > 0:
             self.invincible -= 1
         if self.respawn_timer > 0:
@@ -173,7 +186,7 @@ class EnemyTank(Tank):
         self.shoot_cd = 15
         self.dir_timer = 30
         # 移动节拍（0=每帧，1=每2帧...）
-        move_cd_map = {"basic": 7, "fast": 5, "armor": 11, "elite": 7}
+        move_cd_map = {"basic": 10, "fast": 7, "armor": 14, "elite": 10}
         self.move_interval = move_cd_map.get(etype, 1)
         self.move_counter = 0
 
@@ -183,29 +196,50 @@ class EnemyTank(Tank):
         self.image.fill((0, 0, 0, 0))
         self.image.set_colorkey((0, 0, 0))
 
-        color = C_STEEL if self.etype == "armor" else C_RED
-        dcolor = C_DSTEEL if self.etype == "armor" else C_DRED
-        color2 = C_GRAY if self.etype == "elite" else color
-
-        pygame.draw.rect(self.image, color, (0, 0, w, h), border_radius=2)
-        pygame.draw.rect(self.image, dcolor, (0, 0, w, h), 2, border_radius=2)
-        pygame.draw.circle(self.image, dcolor, (cx, cy), 7)
-
-        if self.direction == DIR_UP:
-            pygame.draw.rect(self.image, dcolor, (cx - 2, 0, 4, cy - 5))
-        elif self.direction == DIR_DOWN:
-            pygame.draw.rect(self.image, dcolor, (cx - 2, cy + 5, 4, h - cy - 5))
-        elif self.direction == DIR_LEFT:
-            pygame.draw.rect(self.image, dcolor, (0, cy - 2, cx - 5, 4))
+        if self.etype == "armor":
+            body_color = C_STEEL
+            dark_color = C_DSTEEL
+        elif self.etype == "elite":
+            body_color = (210, 60, 60)
+            dark_color = (160, 30, 30)
         else:
-            pygame.draw.rect(self.image, dcolor, (cx + 5, cy - 2, w - cx - 5, 4))
+            body_color = C_RED
+            dark_color = C_DRED
 
-        for dx, dy in [(2, 2), (w - 6, 2)]:
-            pygame.draw.rect(self.image, dcolor, (dx, dy, 4, h - 4), border_radius=1)
+        TRACK_W = 5
+        BODY_X = TRACK_W
+        BODY_W = w - 2 * TRACK_W
+        BODY_Y = 2
+        BODY_H = h - 4
 
-        # 精英标记（红色闪烁）
+        # ── 履带 ──
+        for tx in (0, w - TRACK_W):
+            pygame.draw.rect(self.image, (55, 55, 55), (tx, 0, TRACK_W, h), border_radius=1)
+            for i in range(0, h, 4):
+                pygame.draw.line(self.image, (35, 35, 35), (tx + 1, i), (tx + TRACK_W - 2, i))
+
+        # ── 车身 ──
+        pygame.draw.rect(self.image, body_color, (BODY_X, BODY_Y, BODY_W, BODY_H), border_radius=2)
+        pygame.draw.rect(self.image, dark_color, (BODY_X, BODY_Y, BODY_W, BODY_H), 1, border_radius=2)
+
+        # ── 炮塔 ──
+        pygame.draw.circle(self.image, dark_color, (cx, cy), 5)
+        pygame.draw.circle(self.image, body_color, (cx, cy), 3)
+
+        # ── 炮管 ──
+        BW = 3
+        if self.direction == DIR_UP:
+            pygame.draw.rect(self.image, dark_color, (cx - BW // 2, 0, BW, cy - 4))
+        elif self.direction == DIR_DOWN:
+            pygame.draw.rect(self.image, dark_color, (cx - BW // 2, cy + 4, BW, h - cy - 4))
+        elif self.direction == DIR_LEFT:
+            pygame.draw.rect(self.image, dark_color, (0, cy - BW // 2, cx - 4, BW))
+        else:
+            pygame.draw.rect(self.image, dark_color, (cx + 4, cy - BW // 2, w - cx - 4, BW))
+
+        # ── 精英标记（金色星点） ──
         if self.etype == "elite":
-            pygame.draw.circle(self.image, (255, 80, 80), (cx, cy), 3)
+            pygame.draw.circle(self.image, (255, 200, 80), (cx, cy), 2)
 
     def update(self, game_map, tank_group, bullet_group):
         super().update()
